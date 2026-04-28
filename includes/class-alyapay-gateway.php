@@ -339,7 +339,7 @@ class AlyaPay_Gateway extends WC_Payment_Gateway {
         }
 
         if (in_array($api_status, ['APPROVED', 'COMPLETED'], true)) {
-            $this->order_helper->approve_and_capture($order, $transaction_id);
+            $this->order_helper->approve_and_capture($order, $transaction_id, 'redirect', $this->wc_status('approved_status'));
             $this->log("Payment approved via redirect for order #{$order->get_order_number()}. Transaction: {$transaction_id}");
             wp_safe_redirect($this->get_return_url($order));
             exit;

@@ -3,13 +3,17 @@ defined('ABSPATH') || exit;
 
 class AlyaPay_Order_Helper {
 
-    public function approve_and_capture(\WC_Order $order, string $transaction_id, string $source = 'redirect'): void {
+    public function approve_and_capture(\WC_Order $order, string $transaction_id, string $source = 'redirect', string $approved_status = ''): void {
         // Idempotent — matches Magento's hasInvoices() guard in approveAndCaptureOrder()
         if ($order->is_paid()) {
             return;
         }
 
         $order->payment_complete($transaction_id);
+
+        if ($approved_status && !$order->has_status($approved_status)) {
+            $order->update_status($approved_status);
+        }
 
         $note = $source === 'webhook'
             ? sprintf(

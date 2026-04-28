@@ -107,7 +107,7 @@ class AlyaPay_Webhook {
             return true; // Redirect fallback already captured
         }
 
-        $this->order_helper->approve_and_capture($order, $transaction_id, 'webhook');
+        $this->order_helper->approve_and_capture($order, $transaction_id, 'webhook', $this->approved_status);
         return true;
     }
 
