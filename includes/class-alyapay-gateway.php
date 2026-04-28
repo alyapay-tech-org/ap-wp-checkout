@@ -1,0 +1,523 @@
+<?php
+defined('ABSPATH') || exit;
+
+class AlyaPay_Gateway extends WC_Payment_Gateway {
+    /** @var AlyaPay_API */
+    private $api;
+    /** @var AlyaPay_Order_Helper */
+    private $order_helper;
+
+    public function __construct() {
+        $this->id                 = 'alyapay';
+        $this->method_title       = __('AlyaPay', 'alyapay');
+        $this->method_description = __('BNPL payment gateway powered by AlyaPay.', 'alyapay');
+        $this->has_fields         = true;
+        $this->order_button_text  = __('Pay with AlyaPay', 'alyapay');
+
+        $this->init_form_fields();
+        $this->init_settings();
+
+        $this->title       = $this->get_option('title');
+        $this->description = $this->get_option('description');
+
+        $this->api          = new AlyaPay_API($this->get_option('api_key', ''), $this->api_base_url());
+        $this->order_helper = new AlyaPay_Order_Helper();
+
+        add_action('woocommerce_update_options_payment_gateways_' . $this->id, [$this, 'process_admin_options']);
+    }
+
+    public function init_form_fields(): void {
+        $this->form_fields = [
+            // ---- General ----
+            'enabled'     => [
+                'title'   => __('Enable/Disable', 'alyapay'),
+                'type'    => 'checkbox',
+                'label'   => __('Enable AlyaPay Payment', 'alyapay'),
+                'default' => 'yes',
+            ],
+            'title'       => [
+                'title'       => __('Title', 'alyapay'),
+                'type'        => 'text',
+                'default'     => 'AlyaPay',
+                'desc_tip'    => true,
+                'description' => __('Payment title shown at checkout.', 'alyapay'),
+            ],
+            'description' => [
+                'title'   => __('Description', 'alyapay'),
+                'type'    => 'textarea',
+                'default' => __('Pay in installments with AlyaPay.', 'alyapay'),
+            ],
+            'debug'       => [
+                'title'   => __('Debug Mode', 'alyapay'),
+                'type'    => 'checkbox',
+                'label'   => __('Enable logging', 'alyapay'),
+                'default' => 'no',
+            ],
+
+            // ---- API ----
+            'environment'        => [
+                'title'   => __('Environment', 'alyapay'),
+                'type'    => 'select',
+                'options' => [
+                    'sandbox'    => __('Sandbox', 'alyapay'),
+                    'production' => __('Production', 'alyapay'),
+                ],
+                'default' => 'sandbox',
+            ],
+            'api_key'            => [
+                'title'       => __('API Key', 'alyapay'),
+                'type'        => 'password',
+                'description' => __('Your AlyaPay API key.', 'alyapay'),
+                'desc_tip'    => true,
+            ],
+            'transaction_expiry' => [
+                'title'             => __('Transaction Expiry (minutes)', 'alyapay'),
+                'type'              => 'number',
+                'default'           => '30',
+                'custom_attributes' => ['min' => 0, 'max' => 60],
+            ],
+
+            // ---- Webhooks ----
+            'webhook_url'    => [
+                'title'       => __('Store URL', 'alyapay'),
+                'type'        => 'text',
+                'default'     => home_url('/'),
+                'description' => __('Your store base URL. AlyaPay will POST webhook events to this URL (webhook path appended automatically).', 'alyapay'),
+                'desc_tip'    => true,
+            ],
+            'webhook_secret' => [
+                'title'       => __('Webhook Secret', 'alyapay'),
+                'type'        => 'password',
+                'description' => __('Required for production. Verifies webhook signatures.', 'alyapay'),
+                'desc_tip'    => true,
+            ],
+
+            // ---- Order Status Mapping ----
+            'approved_status'  => [
+                'title'   => __('Approved Order Status', 'alyapay'),
+                'type'    => 'select',
+                'options' => wc_get_order_statuses(),
+                'default' => 'wc-processing',
+            ],
+            'cancelled_status' => [
+                'title'   => __('Cancelled Order Status', 'alyapay'),
+                'type'    => 'select',
+                'options' => wc_get_order_statuses(),
+                'default' => 'wc-cancelled',
+            ],
+            'expired_status'   => [
+                'title'   => __('Expired Order Status', 'alyapay'),
+                'type'    => 'select',
+                'options' => wc_get_order_statuses(),
+                'default' => 'wc-cancelled',
+            ],
+
+            // ---- Widgets ----
+            'widget_enabled'       => [
+                'title'   => __('Checkout Widget', 'alyapay'),
+                'type'    => 'checkbox',
+                'label'   => __('Enable AlyaPay checkout widget', 'alyapay'),
+                'default' => 'yes',
+            ],
+            'widget_theme'         => [
+                'title'   => __('Widget Theme', 'alyapay'),
+                'type'    => 'select',
+                'options' => [
+                    'light'         => 'Light',
+                    'light-plain'   => 'Light Plain',
+                    'dark'          => 'Dark',
+                    'dark-plain'    => 'Dark Plain',
+                    'neutral'       => 'Neutral',
+                    'neutral-plain' => 'Neutral Plain',
+                ],
+                'default' => 'light',
+            ],
+            'widget_variant'       => [
+                'title'   => __('Widget Variant', 'alyapay'),
+                'type'    => 'select',
+                'options' => ['default' => 'Default', 'interactive' => 'Interactive'],
+                'default' => 'default',
+            ],
+            'widget_detail'        => [
+                'title'   => __('Widget Detail', 'alyapay'),
+                'type'    => 'select',
+                'options' => ['modal' => 'Modal', 'panel' => 'Panel'],
+                'default' => 'modal',
+            ],
+            'widget_logo_position' => [
+                'title'   => __('Widget Logo Position', 'alyapay'),
+                'type'    => 'select',
+                'options' => ['right' => 'Right', 'left' => 'Left'],
+                'default' => 'right',
+            ],
+            'credit_promo_product' => [
+                'title'   => __('Credit Promo on Product Page', 'alyapay'),
+                'type'    => 'checkbox',
+                'label'   => __('Show BNPL simulator on product pages', 'alyapay'),
+                'default' => 'yes',
+            ],
+            'credit_promo_cart'    => [
+                'title'   => __('Credit Promo on Cart', 'alyapay'),
+                'type'    => 'checkbox',
+                'label'   => __('Show BNPL simulator on cart page', 'alyapay'),
+                'default' => 'yes',
+            ],
+            'amount_min'           => [
+                'title'             => __('Minimum Amount', 'alyapay'),
+                'type'              => 'number',
+                'default'           => '500',
+                'custom_attributes' => ['readonly' => 'readonly'],
+                'description'       => __('Set by AlyaPay. Contact support to change.', 'alyapay'),
+                'desc_tip'          => true,
+            ],
+            'amount_max'           => [
+                'title'             => __('Maximum Amount', 'alyapay'),
+                'type'              => 'number',
+                'default'           => '15000',
+                'custom_attributes' => ['readonly' => 'readonly'],
+                'description'       => __('Set by AlyaPay. Contact support to change.', 'alyapay'),
+                'desc_tip'          => true,
+            ],
+        ];
+    }
+
+    public function is_available(): bool {
+        if (!parent::is_available()) {
+            return false;
+        }
+        if (WC()->cart) {
+            $total = (float) WC()->cart->total;
+            $min   = (float) ($this->get_option('amount_min') ?: 500);
+            $max   = (float) ($this->get_option('amount_max') ?: 15000);
+            if ($total < $min || $total > $max) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public function payment_fields(): void {
+        if ($this->description) {
+            echo wpautop(wptexturize(esc_html($this->description)));
+        }
+
+        $widget_enabled = $this->get_option('widget_enabled') === 'yes';
+        if (!$widget_enabled || !WC()->cart) {
+            return;
+        }
+
+        $total         = number_format((float) WC()->cart->total, 2, '.', '');
+        $currency      = get_woocommerce_currency();
+        $locale        = get_locale();
+        $lang          = strpos($locale, 'fr') === 0 ? 'fr' : (strpos($locale, 'ar') === 0 ? 'ar' : 'en');
+        $theme         = $this->get_option('widget_theme', 'light');
+        $variant       = $this->get_option('widget_variant', 'default');
+        $detail        = $this->get_option('widget_detail', 'modal');
+        $logo_position = $this->get_option('widget_logo_position', 'right');
+
+        printf(
+            '<div class="alyapay-widget"><alya-placement key="checkout" price="%s" currency="%s" lang="%s" installments="4" theme="%s" variant="%s" detail="%s" logo-position="%s"></alya-placement></div>',
+            esc_attr($total),
+            esc_attr($currency),
+            esc_attr($lang),
+            esc_attr($theme),
+            esc_attr($variant),
+            esc_attr($detail),
+            esc_attr($logo_position)
+        );
+    }
+
+    public function process_payment($order_id): array {
+        $order = wc_get_order($order_id);
+
+        if (!$order) {
+            wc_add_notice(__('Order not found.', 'alyapay'), 'error');
+            return ['result' => 'failure'];
+        }
+
+        try {
+            $payload  = $this->build_session_intent_payload($order);
+            $response = $this->api->create_session_intent($payload);
+
+            $order->update_meta_data('_alyapay_checkout_token',    $response['checkout_token']    ?? '');
+            $order->update_meta_data('_alyapay_payment_intent_id', $response['payment_intent_id'] ?? '');
+            $order->update_status('pending', __('Awaiting AlyaPay payment.', 'alyapay'));
+            $order->save();
+
+            $return_url = add_query_arg([
+                'wc-api'    => 'alyapay_return',
+                'order_id'  => $order->get_id(),
+                'order_key' => $order->get_order_key(),
+            ], home_url('/'));
+
+            $checkout_url = add_query_arg('redirect_url', rawurlencode($return_url), $response['checkout_url']);
+
+            $this->log("Session intent created for order #{$order->get_order_number()}");
+
+            return ['result' => 'success', 'redirect' => $checkout_url];
+
+        } catch (AlyaPay_API_Exception $e) {
+            $this->log("Session intent failed for order #{$order->get_order_number()}: {$e->getMessage()}", 'error');
+            $order->update_status('failed', sprintf(__('AlyaPay error: %s', 'alyapay'), $e->getMessage()));
+            $this->order_helper->restore_cart($order);
+            wc_add_notice(__('Payment could not be initiated. Please try again.', 'alyapay'), 'error');
+            return ['result' => 'failure'];
+        }
+    }
+
+    public function handle_return(): void {
+        // phpcs:disable WordPress.Security.NonceVerification.Recommended
+        $order_id       = isset($_GET['order_id'])      ? absint($_GET['order_id'])                                        : 0;
+        $order_key      = isset($_GET['order_key'])     ? sanitize_text_field(wp_unslash($_GET['order_key']))               : '';
+        $status         = isset($_GET['status'])        ? sanitize_text_field(wp_unslash($_GET['status']))                  : '';
+        $transaction_id = isset($_GET['transaction_id'])
+            ? sanitize_text_field(wp_unslash($_GET['transaction_id']))
+            : (isset($_GET['transactionId']) ? sanitize_text_field(wp_unslash($_GET['transactionId'])) : '');
+        // phpcs:enable
+
+        $order = wc_get_order($order_id);
+
+        if (!$order || !hash_equals($order->get_order_key(), $order_key)) {
+            wc_add_notice(__('Invalid order.', 'alyapay'), 'error');
+            wp_safe_redirect(wc_get_checkout_url());
+            exit;
+        }
+
+        $url_status = strtoupper($status);
+
+        // FAILURE — cancel order immediately, matches Magento Success.php FAILURE branch
+        if ($url_status === 'FAILURE') {
+            $this->order_helper->cancel_order($order, 'Payment failed (URL status: FAILURE)');
+            wc_add_notice(__('Payment failed. Please try again or choose another payment method.', 'alyapay'), 'error');
+            wp_safe_redirect(wc_get_cart_url());
+            exit;
+        }
+
+        // CANCELED / EXPIRED — do NOT cancel order; webhook handles status; just restore cart
+        if ($url_status === 'CANCELED' || $url_status === 'EXPIRED') {
+            $this->order_helper->restore_cart($order);
+            wc_add_notice(
+                sprintf(
+                    /* translators: %s: payment status (canceled or expired) */
+                    __('Payment was %s. Webhooks will update order status if needed.', 'alyapay'),
+                    strtolower($url_status)
+                ),
+                'notice'
+            );
+            wp_safe_redirect(wc_get_checkout_url());
+            exit;
+        }
+
+        if ($url_status !== 'SUCCESS') {
+            $this->order_helper->cancel_order($order, __('Payment cancelled or failed at AlyaPay checkout.', 'alyapay'));
+            wc_add_notice(__('Payment was not completed. Please try again.', 'alyapay'), 'error');
+            wp_safe_redirect(wc_get_checkout_url());
+            exit;
+        }
+
+        // No transaction_id — let webhook confirm, redirect to success page
+        if (empty($transaction_id)) {
+            $this->log("SUCCESS return with no transaction_id for order #{$order->get_order_number()} — webhook will confirm.", 'error');
+            wc_add_notice(__('Your order is being processed. You will be notified when confirmed.', 'alyapay'), 'notice');
+            wp_safe_redirect($this->get_return_url($order));
+            exit;
+        }
+
+        try {
+            $status_data = $this->api->get_transaction_status($transaction_id);
+            $api_status  = $status_data['status'] ?? '';
+        } catch (AlyaPay_API_Exception $e) {
+            $this->log("Status check failed for transaction {$transaction_id}: {$e->getMessage()}", 'error');
+            wc_add_notice(__('Could not verify payment status. Your order is being reviewed.', 'alyapay'), 'notice');
+            wp_safe_redirect($this->get_return_url($order));
+            exit;
+        }
+
+        if (in_array($api_status, ['APPROVED', 'COMPLETED'], true)) {
+            $this->order_helper->approve_and_capture($order, $transaction_id);
+            $this->log("Payment approved via redirect for order #{$order->get_order_number()}. Transaction: {$transaction_id}");
+            wp_safe_redirect($this->get_return_url($order));
+            exit;
+        }
+
+        if (in_array($api_status, ['CANCELED', 'CANCELLED', 'EXPIRED', 'DECLINED', 'FAILED', 'FAILURE'], true)) {
+            $this->order_helper->cancel_order($order, sprintf(
+                /* translators: %s: payment status from AlyaPay */
+                __('AlyaPay payment %s.', 'alyapay'),
+                strtolower($api_status)
+            ));
+            wc_add_notice(__('Payment was not completed. Please try again.', 'alyapay'), 'error');
+            wp_safe_redirect(wc_get_checkout_url());
+            exit;
+        }
+
+        // Pending / unknown — let customer through, webhook will confirm
+        wc_add_notice(__('Your order is being processed. You will be notified when confirmed.', 'alyapay'), 'notice');
+        wp_safe_redirect($this->get_return_url($order));
+        exit;
+    }
+
+    public function handle_webhook(): void {
+        $payload   = (string) file_get_contents('php://input');
+        // phpcs:disable WordPress.Security.ValidatedSanitizedInput
+        $signature = isset($_SERVER['HTTP_X_ALYA_SIGNATURE']) ? sanitize_text_field(wp_unslash($_SERVER['HTTP_X_ALYA_SIGNATURE'])) : '';
+        $timestamp = isset($_SERVER['HTTP_X_ALYA_TIMESTAMP']) ? sanitize_text_field(wp_unslash($_SERVER['HTTP_X_ALYA_TIMESTAMP'])) : '';
+        // phpcs:enable
+
+        $secret  = $this->get_option('webhook_secret', '');
+        $webhook = new AlyaPay_Webhook(
+            new AlyaPay_Order_Helper(),
+            $this->wc_status('approved_status'),
+            $this->wc_status('cancelled_status'),
+            $this->wc_status('expired_status')
+        );
+
+        if (!$webhook->verify_signature($payload, $signature, $timestamp, $secret)) {
+            $this->log('Webhook signature verification failed.', 'error');
+            wp_send_json(['success' => false, 'error' => 'Invalid signature'], 401);
+            exit;
+        }
+
+        $data = json_decode($payload, true);
+        if (!is_array($data)) {
+            wp_send_json(['success' => false, 'error' => 'Invalid payload'], 400);
+            exit;
+        }
+
+        $this->log("Webhook received: event=" . ($data['event'] ?? 'unknown'));
+
+        if ($webhook->process($data)) {
+            wp_send_json(['success' => true], 200);
+        } else {
+            $this->log("Webhook processing failed for event: " . ($data['event'] ?? ''), 'error');
+            wp_send_json(['success' => false, 'error' => 'Processing failed'], 500);
+        }
+        exit;
+    }
+
+    public function process_admin_options(): bool {
+        $result = parent::process_admin_options();
+        $this->sync_partner_config();
+        return $result;
+    }
+
+    // -------------------------------------------------------------------------
+
+    private function sync_partner_config(): void {
+        $api_key     = $this->get_option('api_key');
+        $environment = $this->get_option('environment', 'sandbox');
+
+        if (empty($api_key) || $this->get_option('enabled') !== 'yes') {
+            return;
+        }
+
+        $webhook_url = $this->get_webhook_url();
+
+        // AlyaPay API requires HTTPS webhook URL — skip sync on non-HTTPS (local dev)
+        if (strpos($webhook_url, 'https://') !== 0) {
+            $this->log('Webhook sync skipped: URL must use HTTPS (' . $webhook_url . ')');
+            return;
+        }
+
+        $payload = [
+            'webhookUrl'        => $webhook_url,
+            'webhookEnabled'    => !empty(trim($webhook_url)),
+            'transactionExpiry' => (int) $this->get_option('transaction_expiry', 30),
+            'generateNewSecret' => false,
+        ];
+
+        try {
+            (new AlyaPay_API($api_key, $this->api_base_url()))->update_partner_config($payload);
+        } catch (\Exception $e) {
+            $this->log('Partner config sync failed: ' . $e->getMessage(), 'error');
+
+            if ($environment === 'production') {
+                WC_Admin_Settings::add_error(
+                    __('AlyaPay: Could not sync configuration. Check your API key.', 'alyapay')
+                );
+            } else {
+                WC_Admin_Settings::add_message(
+                    __('AlyaPay: Settings saved. Sandbox config sync skipped (API unreachable or key invalid).', 'alyapay')
+                );
+            }
+        }
+    }
+
+    private function build_session_intent_payload(\WC_Order $order): array {
+        $items = [];
+
+        foreach ($order->get_items() as $item) {
+            /** @var \WC_Order_Item_Product $item */
+            $qty     = max(1, (int) $item->get_quantity());
+            $product = $item->get_product();
+            $sku     = $product ? trim((string) $product->get_sku()) : '';
+            // Item ID: SKU preferred, fallback product ID — truncated to 64 chars (matches Magento getSku() substr)
+            $id      = substr($sku ?: (string) $item->get_product_id(), 0, 64);
+            // Tax-inclusive price per unit — matches Magento getPriceInclTax()
+            $price   = ((float) $item->get_subtotal() + (float) $item->get_subtotal_tax()) / $qty;
+            $items[] = [
+                'id'       => $id,
+                'name'     => $item->get_name(),
+                'price'    => round($price, 2),
+                'quantity' => $qty,
+            ];
+        }
+
+        // Shipping with tax — matches Magento getShippingAmount() + getShippingTaxAmount()
+        $shipping = (float) $order->get_shipping_total() + (float) $order->get_shipping_tax();
+        if ($shipping > 0) {
+            $items[] = [
+                'id'       => 'shipping',
+                'name'     => __('Shipping', 'alyapay'),
+                'price'    => round($shipping, 2),
+                'quantity' => 1,
+            ];
+        }
+
+        // Fallback for empty orders — matches Magento SessionIntentService fallback item
+        if (empty($items)) {
+            $increment_id = $order->get_order_number();
+            $items[]      = [
+                'id'       => 'order_' . $increment_id,
+                'name'     => 'Order #' . $increment_id,
+                'price'    => (float) $order->get_total(),
+                'quantity' => 1,
+            ];
+        }
+
+        return [
+            'currency'        => $order->get_currency(),
+            'total'           => (float) $order->get_total(),
+            'items'           => $items,
+            'vendorReference' => $order->get_order_number(),
+        ];
+    }
+
+    private function get_webhook_url(): string {
+        $base = trim($this->get_option('webhook_url', ''));
+        if (empty($base)) {
+            $base = home_url('/');
+        }
+        $base    = rtrim($base, '/');
+        $suffix  = '/?wc-api=alyapay_webhook';
+        return strpos($base, $suffix) !== false ? $base : $base . $suffix;
+    }
+
+    private function api_base_url(): string {
+        return $this->get_option('environment') === 'production'
+            ? 'https://api.alyapay.com'
+            : 'https://sandbox-api.alyapay.com';
+    }
+
+    private function wc_status(string $option): string {
+        $status = $this->get_option($option, 'wc-processing');
+        return strpos($status, 'wc-') === 0 ? substr($status, 3) : $status;
+    }
+
+    private function log(string $message, string $level = 'info'): void {
+        if ($this->get_option('debug') !== 'yes' && $level === 'info') {
+            return;
+        }
+        wc_get_logger()->log($level, $message, ['source' => 'alyapay']);
+    }
+}
