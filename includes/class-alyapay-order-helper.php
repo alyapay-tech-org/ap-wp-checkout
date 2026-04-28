@@ -26,12 +26,12 @@ class AlyaPay_Order_Helper {
         $order->add_order_note($note);
     }
 
-    public function cancel_order(\WC_Order $order, string $reason = ''): void {
+    public function cancel_order(\WC_Order $order, string $reason = '', string $status = 'cancelled'): void {
         if ($order->has_status(['cancelled', 'refunded', 'failed'])) {
             return;
         }
 
-        $order->update_status('cancelled', $reason ?: __('Order cancelled via AlyaPay.', 'alyapay'));
+        $order->update_status($status, $reason ?: __('Order cancelled via AlyaPay.', 'alyapay'));
         $this->restore_cart($order);
     }
 

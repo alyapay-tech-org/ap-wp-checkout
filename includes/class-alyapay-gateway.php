@@ -287,29 +287,34 @@ class AlyaPay_Gateway extends WC_Payment_Gateway {
 
         // FAILURE — cancel order immediately, matches Magento Success.php FAILURE branch
         if ($url_status === 'FAILURE') {
-            $this->order_helper->cancel_order($order, 'Payment failed (URL status: FAILURE)');
+            $this->order_helper->cancel_order($order, 'Payment failed (URL status: FAILURE)', $this->wc_status('cancelled_status'));
             wc_add_notice(__('Payment failed. Please try again or choose another payment method.', 'alyapay'), 'error');
-            wp_safe_redirect(wc_get_cart_url());
+            wp_safe_redirect(wc_get_checkout_url());
             exit;
         }
 
-        // CANCELED / EXPIRED — do NOT cancel order; webhook handles status; just restore cart
+        // CANCELED / EXPIRED — restore cart and redirect to checkout
         if ($url_status === 'CANCELED' || $url_status === 'EXPIRED') {
-            $this->order_helper->restore_cart($order);
+            $status_key = $url_status === 'EXPIRED' ? 'expired_status' : 'cancelled_status';
+            $this->order_helper->cancel_order(
+                $order,
+                sprintf('Payment %s at AlyaPay checkout.', strtolower($url_status)),
+                $this->wc_status($status_key)
+            );
             wc_add_notice(
                 sprintf(
                     /* translators: %s: payment status (canceled or expired) */
-                    __('Payment was %s. Webhooks will update order status if needed.', 'alyapay'),
+                    __('Payment was %s. Please try again.', 'alyapay'),
                     strtolower($url_status)
                 ),
-                'notice'
+                'error'
             );
             wp_safe_redirect(wc_get_checkout_url());
             exit;
         }
 
         if ($url_status !== 'SUCCESS') {
-            $this->order_helper->cancel_order($order, __('Payment cancelled or failed at AlyaPay checkout.', 'alyapay'));
+            $this->order_helper->cancel_order($order, __('Payment cancelled or failed at AlyaPay checkout.', 'alyapay'), $this->wc_status('cancelled_status'));
             wc_add_notice(__('Payment was not completed. Please try again.', 'alyapay'), 'error');
             wp_safe_redirect(wc_get_checkout_url());
             exit;
@@ -341,11 +346,16 @@ class AlyaPay_Gateway extends WC_Payment_Gateway {
         }
 
         if (in_array($api_status, ['CANCELED', 'CANCELLED', 'EXPIRED', 'DECLINED', 'FAILED', 'FAILURE'], true)) {
-            $this->order_helper->cancel_order($order, sprintf(
-                /* translators: %s: payment status from AlyaPay */
-                __('AlyaPay payment %s.', 'alyapay'),
-                strtolower($api_status)
-            ));
+            $status_key = in_array($api_status, ['EXPIRED'], true) ? 'expired_status' : 'cancelled_status';
+            $this->order_helper->cancel_order(
+                $order,
+                sprintf(
+                    /* translators: %s: payment status from AlyaPay */
+                    __('AlyaPay payment %s.', 'alyapay'),
+                    strtolower($api_status)
+                ),
+                $this->wc_status($status_key)
+            );
             wc_add_notice(__('Payment was not completed. Please try again.', 'alyapay'), 'error');
             wp_safe_redirect(wc_get_checkout_url());
             exit;
