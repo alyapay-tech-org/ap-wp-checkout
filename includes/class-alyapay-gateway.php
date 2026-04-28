@@ -259,7 +259,6 @@ class AlyaPay_Gateway extends WC_Payment_Gateway {
         } catch (AlyaPay_API_Exception $e) {
             $this->log("Session intent failed for order #{$order->get_order_number()}: {$e->getMessage()}", 'error');
             $order->update_status('failed', sprintf(__('AlyaPay error: %s', 'alyapay'), $e->getMessage()));
-            $this->order_helper->restore_cart($order);
             wc_add_notice(__('Payment could not be initiated. Please try again.', 'alyapay'), 'error');
             return ['result' => 'failure'];
         }

@@ -36,21 +36,5 @@ class AlyaPay_Order_Helper {
         }
 
         $order->update_status($status, $reason ?: __('Order cancelled via AlyaPay.', 'alyapay'));
-        $this->restore_cart($order);
-    }
-
-    public function restore_cart(\WC_Order $order): void {
-        if (null === WC()->cart) {
-            return;
-        }
-
-        foreach ($order->get_items() as $item) {
-            /** @var \WC_Order_Item_Product $item */
-            WC()->cart->add_to_cart(
-                $item->get_product_id(),
-                $item->get_quantity(),
-                $item->get_variation_id()
-            );
-        }
     }
 }
