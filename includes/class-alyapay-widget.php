@@ -56,7 +56,7 @@ class AlyaPay_Widget {
 
         $this->render_template('product-promo', [
             'price'    => $price,
-            'settings' => $this->widget_attrs(),
+            'settings' => $this->widget_attrs('product'),
         ]);
     }
 
@@ -74,7 +74,7 @@ class AlyaPay_Widget {
 
         $this->render_template('cart-promo', [
             'total'    => $total,
-            'settings' => $this->widget_attrs(),
+            'settings' => $this->widget_attrs('cart'),
         ]);
     }
 
@@ -173,12 +173,27 @@ class AlyaPay_Widget {
 
     // -------------------------------------------------------------------------
 
-    private function widget_attrs(): array {
+    private function widget_attrs(string $context = ''): array {
+        $resolve = function (string $key, string $global_default) use ($context): string {
+            if ($context) {
+                $override = $this->get($context . '_widget_' . $key);
+                if ($override !== '') {
+                    return $override;
+                }
+            }
+            return $this->get('widget_' . $key, $global_default);
+        };
+
         return [
-            'theme'         => $this->get('widget_theme', 'light'),
-            'variant'       => $this->get('widget_variant', 'default'),
-            'detail'        => $this->get('widget_detail', 'modal'),
-            'logo_position' => $this->get('widget_logo_position', 'right'),
+            'theme'         => $resolve('theme', 'light'),
+            'variant'       => $resolve('variant', 'default'),
+            'detail'        => $resolve('detail', 'modal'),
+            'logo_position' => $resolve('logo_position', 'right'),
+            'full_width' => $context ? $this->get($context . '_widget_full_width', 'no') : $this->get('widget_full_width', 'no'),
+            'margin_x'   => $context ? $this->get($context . '_widget_margin_x', '') : $this->get('widget_margin_x', ''),
+            'margin_y'   => $context ? $this->get($context . '_widget_margin_y', '') : $this->get('widget_margin_y', ''),
+            'padding_x'  => $context ? $this->get($context . '_widget_padding_x', '') : $this->get('widget_padding_x', ''),
+            'padding_y'  => $context ? $this->get($context . '_widget_padding_y', '') : $this->get('widget_padding_y', ''),
             'currency'      => get_woocommerce_currency(),
             'lang'          => $this->widget_lang(),
         ];

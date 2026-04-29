@@ -24,6 +24,37 @@ class AlyaPay_Gateway extends WC_Payment_Gateway {
         $this->order_helper = new AlyaPay_Order_Helper();
 
         add_action('woocommerce_update_options_payment_gateways_' . $this->id, [$this, 'process_admin_options']);
+
+    }
+
+    public function render_accordion_script(): void {
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+        $page    = isset($_GET['page'])    ? sanitize_text_field(wp_unslash($_GET['page']))    : '';
+        $section = isset($_GET['section']) ? sanitize_text_field(wp_unslash($_GET['section'])) : '';
+        if ($page !== 'wc-settings' || $section !== $this->id) {
+            return;
+        }
+        ?>
+        <style>
+        h3.alya-accordion-header { cursor:pointer; user-select:none; display:flex; align-items:center; justify-content:space-between; }
+        h3.alya-accordion-header::after { content:'▲'; font-size:11px; color:#999; transition:transform .2s; margin-left:8px; }
+        h3.alya-accordion-header.alya-collapsed::after { transform:rotate(180deg); }
+        </style>
+        <script>
+        (function($){
+            $(function(){
+                $('h3.alya-accordion-header').each(function(){
+                    var $h3    = $(this);
+                    var $table = $h3.next('table.form-table');
+                    $h3.on('click', function(){
+                        $h3.toggleClass('alya-collapsed');
+                        $table.toggle();
+                    });
+                });
+            });
+        })(jQuery);
+        </script>
+        <?php
     }
 
     public function init_form_fields(): void {
@@ -112,7 +143,30 @@ class AlyaPay_Gateway extends WC_Payment_Gateway {
                 'default' => 'wc-cancelled',
             ],
 
+            // ---- Limits ----
+            'amount_min' => [
+                'title'             => __('Minimum Amount', 'alyapay'),
+                'type'              => 'number',
+                'default'           => '500',
+                'custom_attributes' => ['readonly' => 'readonly'],
+                'description'       => __('Set by AlyaPay. Contact support to change.', 'alyapay'),
+                'desc_tip'          => true,
+            ],
+            'amount_max' => [
+                'title'             => __('Maximum Amount', 'alyapay'),
+                'type'              => 'number',
+                'default'           => '15000',
+                'custom_attributes' => ['readonly' => 'readonly'],
+                'description'       => __('Set by AlyaPay. Contact support to change.', 'alyapay'),
+                'desc_tip'          => true,
+            ],
+
             // ---- Widgets ----
+            'section_global_widget' => [
+                'title' => __('Checkout Widget', 'alyapay'),
+                'type'  => 'title',
+                'class' => 'alya-accordion-header',
+            ],
             'widget_enabled'       => [
                 'title'   => __('Checkout Widget', 'alyapay'),
                 'type'    => 'checkbox',
@@ -150,33 +204,220 @@ class AlyaPay_Gateway extends WC_Payment_Gateway {
                 'options' => ['right' => 'Right', 'left' => 'Left'],
                 'default' => 'right',
             ],
-            'credit_promo_product' => [
+            'widget_full_width'    => [
+                'title'   => __('Full Width', 'alyapay'),
+                'type'    => 'checkbox',
+                'label'   => __('Stretch widget to full container width', 'alyapay'),
+                'default' => 'no',
+            ],
+            'widget_margin_x'  => [
+                'title'             => __('Margin X (px)', 'alyapay'),
+                'type'              => 'number',
+                'default'           => '',
+                'placeholder'       => '0',
+                'description'       => __('Left and right margin in pixels.', 'alyapay'),
+                'desc_tip'          => true,
+                'custom_attributes' => ['min' => 0],
+            ],
+            'widget_margin_y'  => [
+                'title'             => __('Margin Y (px)', 'alyapay'),
+                'type'              => 'number',
+                'default'           => '',
+                'placeholder'       => '0',
+                'description'       => __('Top and bottom margin in pixels.', 'alyapay'),
+                'desc_tip'          => true,
+                'custom_attributes' => ['min' => 0],
+            ],
+            'widget_padding_x' => [
+                'title'             => __('Padding X (px)', 'alyapay'),
+                'type'              => 'number',
+                'default'           => '',
+                'placeholder'       => '18',
+                'description'       => __('Left and right inner padding in pixels.', 'alyapay'),
+                'desc_tip'          => true,
+                'custom_attributes' => ['min' => 0],
+            ],
+            'widget_padding_y' => [
+                'title'             => __('Padding Y (px)', 'alyapay'),
+                'type'              => 'number',
+                'default'           => '',
+                'placeholder'       => '14',
+                'description'       => __('Top and bottom inner padding in pixels.', 'alyapay'),
+                'desc_tip'          => true,
+                'custom_attributes' => ['min' => 0],
+            ],
+            // ---- Product Widget ----
+            'section_product_widget' => [
+                'title' => __('Product Page Widget', 'alyapay'),
+                'type'  => 'title',
+                'class' => 'alya-accordion-header',
+            ],
+            'credit_promo_product'         => [
                 'title'   => __('Credit Promo on Product Page', 'alyapay'),
                 'type'    => 'checkbox',
                 'label'   => __('Show BNPL simulator on product pages', 'alyapay'),
                 'default' => 'yes',
             ],
-            'credit_promo_cart'    => [
+            'product_widget_theme'         => [
+                'title'       => __('Product Widget Theme', 'alyapay'),
+                'type'        => 'select',
+                'options'     => ['' => __('— Same as global —', 'alyapay'), 'light' => 'Light', 'light-plain' => 'Light Plain', 'dark' => 'Dark', 'dark-plain' => 'Dark Plain', 'neutral' => 'Neutral', 'neutral-plain' => 'Neutral Plain'],
+                'default'     => '',
+                'description' => __('Override global theme for product page widget.', 'alyapay'),
+                'desc_tip'    => true,
+            ],
+            'product_widget_variant'       => [
+                'title'       => __('Product Widget Variant', 'alyapay'),
+                'type'        => 'select',
+                'options'     => ['' => __('— Same as global —', 'alyapay'), 'default' => 'Default', 'interactive' => 'Interactive'],
+                'default'     => '',
+                'description' => __('Override global variant for product page widget.', 'alyapay'),
+                'desc_tip'    => true,
+            ],
+            'product_widget_detail'        => [
+                'title'       => __('Product Widget Detail', 'alyapay'),
+                'type'        => 'select',
+                'options'     => ['' => __('— Same as global —', 'alyapay'), 'modal' => 'Modal', 'panel' => 'Panel'],
+                'default'     => '',
+                'description' => __('Override global detail for product page widget.', 'alyapay'),
+                'desc_tip'    => true,
+            ],
+            'product_widget_logo_position' => [
+                'title'       => __('Product Widget Logo Position', 'alyapay'),
+                'type'        => 'select',
+                'options'     => ['' => __('— Same as global —', 'alyapay'), 'right' => 'Right', 'left' => 'Left'],
+                'default'     => '',
+                'description' => __('Override global logo position for product page widget.', 'alyapay'),
+                'desc_tip'    => true,
+            ],
+            'product_widget_full_width'    => [
+                'title'   => __('Full Width', 'alyapay'),
+                'type'    => 'checkbox',
+                'label'   => __('Stretch widget to full container width', 'alyapay'),
+                'default' => 'no',
+            ],
+            'product_widget_margin_x'  => [
+                'title'             => __('Margin X (px)', 'alyapay'),
+                'type'              => 'number',
+                'default'           => '',
+                'placeholder'       => '0',
+                'description'       => __('Left and right margin in pixels.', 'alyapay'),
+                'desc_tip'          => true,
+                'custom_attributes' => ['min' => 0],
+            ],
+            'product_widget_margin_y'  => [
+                'title'             => __('Margin Y (px)', 'alyapay'),
+                'type'              => 'number',
+                'default'           => '',
+                'placeholder'       => '0',
+                'description'       => __('Top and bottom margin in pixels.', 'alyapay'),
+                'desc_tip'          => true,
+                'custom_attributes' => ['min' => 0],
+            ],
+            'product_widget_padding_x' => [
+                'title'             => __('Padding X (px)', 'alyapay'),
+                'type'              => 'number',
+                'default'           => '',
+                'placeholder'       => '18',
+                'description'       => __('Left and right inner padding in pixels.', 'alyapay'),
+                'desc_tip'          => true,
+                'custom_attributes' => ['min' => 0],
+            ],
+            'product_widget_padding_y' => [
+                'title'             => __('Padding Y (px)', 'alyapay'),
+                'type'              => 'number',
+                'default'           => '',
+                'placeholder'       => '14',
+                'description'       => __('Top and bottom inner padding in pixels.', 'alyapay'),
+                'desc_tip'          => true,
+                'custom_attributes' => ['min' => 0],
+            ],
+
+            // ---- Cart Widget ----
+            'section_cart_widget' => [
+                'title' => __('Cart Widget', 'alyapay'),
+                'type'  => 'title',
+                'class' => 'alya-accordion-header',
+            ],
+            'credit_promo_cart'            => [
                 'title'   => __('Credit Promo on Cart', 'alyapay'),
                 'type'    => 'checkbox',
                 'label'   => __('Show BNPL simulator on cart page', 'alyapay'),
                 'default' => 'yes',
             ],
-            'amount_min'           => [
-                'title'             => __('Minimum Amount', 'alyapay'),
-                'type'              => 'number',
-                'default'           => '500',
-                'custom_attributes' => ['readonly' => 'readonly'],
-                'description'       => __('Set by AlyaPay. Contact support to change.', 'alyapay'),
-                'desc_tip'          => true,
+            'cart_widget_theme'            => [
+                'title'       => __('Cart Widget Theme', 'alyapay'),
+                'type'        => 'select',
+                'options'     => ['' => __('— Same as global —', 'alyapay'), 'light' => 'Light', 'light-plain' => 'Light Plain', 'dark' => 'Dark', 'dark-plain' => 'Dark Plain', 'neutral' => 'Neutral', 'neutral-plain' => 'Neutral Plain'],
+                'default'     => '',
+                'description' => __('Override global theme for cart widget.', 'alyapay'),
+                'desc_tip'    => true,
             ],
-            'amount_max'           => [
-                'title'             => __('Maximum Amount', 'alyapay'),
+            'cart_widget_variant'          => [
+                'title'       => __('Cart Widget Variant', 'alyapay'),
+                'type'        => 'select',
+                'options'     => ['' => __('— Same as global —', 'alyapay'), 'default' => 'Default', 'interactive' => 'Interactive'],
+                'default'     => '',
+                'description' => __('Override global variant for cart widget.', 'alyapay'),
+                'desc_tip'    => true,
+            ],
+            'cart_widget_detail'           => [
+                'title'       => __('Cart Widget Detail', 'alyapay'),
+                'type'        => 'select',
+                'options'     => ['' => __('— Same as global —', 'alyapay'), 'modal' => 'Modal', 'panel' => 'Panel'],
+                'default'     => '',
+                'description' => __('Override global detail for cart widget.', 'alyapay'),
+                'desc_tip'    => true,
+            ],
+            'cart_widget_logo_position'    => [
+                'title'       => __('Cart Widget Logo Position', 'alyapay'),
+                'type'        => 'select',
+                'options'     => ['' => __('— Same as global —', 'alyapay'), 'right' => 'Right', 'left' => 'Left'],
+                'default'     => '',
+                'description' => __('Override global logo position for cart widget.', 'alyapay'),
+                'desc_tip'    => true,
+            ],
+            'cart_widget_full_width'    => [
+                'title'   => __('Full Width', 'alyapay'),
+                'type'    => 'checkbox',
+                'label'   => __('Stretch widget to full container width', 'alyapay'),
+                'default' => 'no',
+            ],
+            'cart_widget_margin_x'  => [
+                'title'             => __('Margin X (px)', 'alyapay'),
                 'type'              => 'number',
-                'default'           => '15000',
-                'custom_attributes' => ['readonly' => 'readonly'],
-                'description'       => __('Set by AlyaPay. Contact support to change.', 'alyapay'),
+                'default'           => '',
+                'placeholder'       => '0',
+                'description'       => __('Left and right margin in pixels.', 'alyapay'),
                 'desc_tip'          => true,
+                'custom_attributes' => ['min' => 0],
+            ],
+            'cart_widget_margin_y'  => [
+                'title'             => __('Margin Y (px)', 'alyapay'),
+                'type'              => 'number',
+                'default'           => '',
+                'placeholder'       => '0',
+                'description'       => __('Top and bottom margin in pixels.', 'alyapay'),
+                'desc_tip'          => true,
+                'custom_attributes' => ['min' => 0],
+            ],
+            'cart_widget_padding_x' => [
+                'title'             => __('Padding X (px)', 'alyapay'),
+                'type'              => 'number',
+                'default'           => '',
+                'placeholder'       => '18',
+                'description'       => __('Left and right inner padding in pixels.', 'alyapay'),
+                'desc_tip'          => true,
+                'custom_attributes' => ['min' => 0],
+            ],
+            'cart_widget_padding_y' => [
+                'title'             => __('Padding Y (px)', 'alyapay'),
+                'type'              => 'number',
+                'default'           => '',
+                'placeholder'       => '14',
+                'description'       => __('Top and bottom inner padding in pixels.', 'alyapay'),
+                'desc_tip'          => true,
+                'custom_attributes' => ['min' => 0],
             ],
         ];
     }
@@ -214,16 +455,29 @@ class AlyaPay_Gateway extends WC_Payment_Gateway {
         $variant       = $this->get_option('widget_variant', 'default');
         $detail        = $this->get_option('widget_detail', 'modal');
         $logo_position = $this->get_option('widget_logo_position', 'right');
+        $full_width = $this->get_option('widget_full_width', 'no') === 'yes';
+        $margin_x   = $this->get_option('widget_margin_x', '');
+        $margin_y   = $this->get_option('widget_margin_y', '');
+        $padding_x  = $this->get_option('widget_padding_x', '');
+        $padding_y  = $this->get_option('widget_padding_y', '');
+
+        $extra = '';
+        if ($full_width) $extra .= ' full-width="true"';
+        if ($margin_x !== '')  $extra .= ' margin-x="'  . esc_attr($margin_x)  . '"';
+        if ($margin_y !== '')  $extra .= ' margin-y="'  . esc_attr($margin_y)  . '"';
+        if ($padding_x !== '') $extra .= ' padding-x="' . esc_attr($padding_x) . '"';
+        if ($padding_y !== '') $extra .= ' padding-y="' . esc_attr($padding_y) . '"';
 
         printf(
-            '<div class="alyapay-widget"><alya-placement key="checkout" price="%s" currency="%s" lang="%s" installments="4" theme="%s" variant="%s" detail="%s" logo-position="%s"></alya-placement></div>',
+            '<div class="alyapay-widget"><alya-placement key="checkout" price="%s" currency="%s" lang="%s" installments="4" theme="%s" variant="%s" detail="%s" logo-position="%s"%s></alya-placement></div>',
             esc_attr($total),
             esc_attr($currency),
             esc_attr($lang),
             esc_attr($theme),
             esc_attr($variant),
             esc_attr($detail),
-            esc_attr($logo_position)
+            esc_attr($logo_position),
+            $extra
         );
     }
 

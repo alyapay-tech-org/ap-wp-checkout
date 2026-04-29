@@ -60,6 +60,40 @@ add_action('plugins_loaded', static function () {
 
     new AlyaPay_Widget();
 
+    // Accordion JS for widget settings sections in admin
+    add_action('admin_footer', static function () {
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+        if ((isset($_GET['page']) ? $_GET['page'] : '') !== 'wc-settings'
+            || (isset($_GET['section']) ? $_GET['section'] : '') !== 'alyapay') {
+            return;
+        }
+        ?>
+        <style>
+        h3.alya-accordion-header{cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;background:#f6f7f7;border:1px solid #dcdcde;border-radius:4px 4px 0 0;padding:12px 16px;margin:20px 0 0;font-size:13px;font-weight:600;color:#1d2327;}
+        h3.alya-accordion-header:hover{background:#ebebec;border-color:#c3c4c7;}
+        h3.alya-accordion-header.alya-collapsed{border-radius:4px;}
+        h3.alya-accordion-header::after{content:'▲';font-size:10px;color:#646970;transition:transform .25s ease;}
+        h3.alya-accordion-header.alya-collapsed::after{transform:rotate(180deg);}
+        .alya-accordion-wrap{border:1px solid #dcdcde;border-top:none;border-radius:0 0 4px 4px;background:#fff;overflow:hidden;transition:max-height .3s ease;max-height:2000px;padding:0 16px;}
+        .alya-accordion-wrap.alya-collapsed{max-height:0;border:none;}
+        .alya-accordion-wrap table.form-table{margin:0;background:#fff;}
+        </style>
+        <script>
+        (function($){$(function(){
+            $('h3.alya-accordion-header').each(function(){
+                var $h3=$(this);
+                $h3.next('table.form-table').wrap('<div class="alya-accordion-wrap"></div>');
+                var $wrap=$h3.next('.alya-accordion-wrap');
+                $h3.on('click',function(){
+                    $h3.toggleClass('alya-collapsed');
+                    $wrap.toggleClass('alya-collapsed');
+                });
+            });
+        });})(jQuery);
+        </script>
+        <?php
+    });
+
     // Block checkout integration
     add_action('woocommerce_blocks_loaded', static function () {
         if (!class_exists('Automattic\WooCommerce\Blocks\Payments\Integrations\AbstractPaymentMethodType')) {
