@@ -19,14 +19,26 @@ class AlyaPay_Widget {
         add_action('wp_enqueue_scripts', [$this, 'enqueue_widget_script']);
 
         if ($promo_prod) {
-            add_action('woocommerce_single_product_summary', [$this, 'render_product_promo'], 15);
+            $prod_position = $this->get('product_widget_position', 'after_price');
+            if ($prod_position === 'before_add_to_cart') {
+                add_action('woocommerce_single_product_summary', [$this, 'render_product_promo'], 29);
+            } else {
+                add_action('woocommerce_single_product_summary', [$this, 'render_product_promo'], 15);
+            }
         }
 
         if ($promo_cart) {
-            add_action('woocommerce_cart_totals_after_order_total', [$this, 'render_cart_promo']);
+            $cart_position = $this->get('cart_widget_position', 'after_total');
+            if ($cart_position === 'before_checkout_button') {
+                add_action('woocommerce_proceed_to_checkout', [$this, 'render_cart_promo'], 15);
+            } else {
+                add_action('woocommerce_cart_totals_after_order_total', [$this, 'render_cart_promo']);
+            }
         }
 
         add_action('woocommerce_thankyou_alyapay', [$this, 'render_success_schedules']);
+
+        add_shortcode('alyapay_promo', [$this, 'shortcode_promo']);
     }
 
     public function enqueue_widget_script(): void {
@@ -76,6 +88,71 @@ class AlyaPay_Widget {
             'total'    => $total,
             'settings' => $this->widget_attrs('cart'),
         ]);
+    }
+
+    public function shortcode_promo(array $atts): string {
+        // Auto-detect price: shortcode attr > current product > cart total
+        $price = 0.0;
+
+        if (!empty($atts['price'])) {
+            $price = (float) $atts['price'];
+        } elseif (is_product()) {
+            global $product;
+            if ($product) {
+                $price = (float) $product->get_price();
+            }
+        } elseif (is_cart() && WC()->cart) {
+            $price = (float) WC()->cart->total;
+        }
+
+        if ($price <= 0) {
+            return '';
+        }
+
+        $min = (float) ($this->get('amount_min') ?: 500);
+        $max = (float) ($this->get('amount_max') ?: 15000);
+
+        if ($price < $min || $price > $max) {
+            return '';
+        }
+
+        $context = in_array($atts['context'] ?? '', ['product', 'cart'], true) ? $atts['context'] : '';
+        $attrs   = $this->widget_attrs($context);
+
+        // Allow shortcode to override any attr
+        $overridable = ['theme', 'variant', 'detail', 'logo_position', 'full_width', 'margin_x', 'margin_y', 'padding_x', 'padding_y'];
+        foreach ($overridable as $key) {
+            $sc_key = str_replace('_', '-', $key);
+            if (isset($atts[$sc_key])) {
+                $attrs[$key] = sanitize_text_field($atts[$sc_key]);
+            } elseif (isset($atts[$key])) {
+                $attrs[$key] = sanitize_text_field($atts[$key]);
+            }
+        }
+
+        $installments = isset($atts['installments']) ? (int) $atts['installments'] : 4;
+
+        $extra = '';
+        if (!empty($attrs['full_width']) && $attrs['full_width'] === 'yes') $extra .= ' full-width="true"';
+        if ($attrs['margin_x'] !== '')  $extra .= ' margin-x="'  . esc_attr($attrs['margin_x'])  . '"';
+        if ($attrs['margin_y'] !== '')  $extra .= ' margin-y="'  . esc_attr($attrs['margin_y'])  . '"';
+        if ($attrs['padding_x'] !== '') $extra .= ' padding-x="' . esc_attr($attrs['padding_x']) . '"';
+        if ($attrs['padding_y'] !== '') $extra .= ' padding-y="' . esc_attr($attrs['padding_y']) . '"';
+
+        wp_enqueue_script('alyapay-placement');
+
+        return sprintf(
+            '<div class="alyapay-credit-promo"><alya-placement key="credit-promotion" price="%s" currency="%s" lang="%s" installments="%d" theme="%s" variant="%s" detail="%s" logo-position="%s"%s></alya-placement></div>',
+            esc_attr((string) $price),
+            esc_attr($attrs['currency']),
+            esc_attr($attrs['lang']),
+            $installments,
+            esc_attr($attrs['theme']),
+            esc_attr($attrs['variant']),
+            esc_attr($attrs['detail']),
+            esc_attr($attrs['logo_position']),
+            $extra
+        );
     }
 
     public function render_success_schedules(int $order_id): void {

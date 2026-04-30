@@ -261,33 +261,44 @@ class AlyaPay_Gateway extends WC_Payment_Gateway {
             'product_widget_theme'         => [
                 'title'       => __('Product Widget Theme', 'alyapay'),
                 'type'        => 'select',
-                'options'     => ['' => __('— Same as global —', 'alyapay'), 'light' => 'Light', 'light-plain' => 'Light Plain', 'dark' => 'Dark', 'dark-plain' => 'Dark Plain', 'neutral' => 'Neutral', 'neutral-plain' => 'Neutral Plain'],
-                'default'     => '',
-                'description' => __('Override global theme for product page widget.', 'alyapay'),
+                'options'     => ['light' => 'Light', 'light-plain' => 'Light Plain', 'dark' => 'Dark', 'dark-plain' => 'Dark Plain', 'neutral' => 'Neutral', 'neutral-plain' => 'Neutral Plain'],
+                'default'     => 'light',
+                'description' => __('Theme for the product page widget.', 'alyapay'),
                 'desc_tip'    => true,
             ],
             'product_widget_variant'       => [
                 'title'       => __('Product Widget Variant', 'alyapay'),
                 'type'        => 'select',
-                'options'     => ['' => __('— Same as global —', 'alyapay'), 'default' => 'Default', 'interactive' => 'Interactive'],
-                'default'     => '',
-                'description' => __('Override global variant for product page widget.', 'alyapay'),
+                'options'     => ['default' => 'Default', 'interactive' => 'Interactive'],
+                'default'     => 'default',
+                'description' => __('Variant for the product page widget.', 'alyapay'),
                 'desc_tip'    => true,
             ],
             'product_widget_detail'        => [
                 'title'       => __('Product Widget Detail', 'alyapay'),
                 'type'        => 'select',
-                'options'     => ['' => __('— Same as global —', 'alyapay'), 'modal' => 'Modal', 'panel' => 'Panel'],
-                'default'     => '',
-                'description' => __('Override global detail for product page widget.', 'alyapay'),
+                'options'     => ['modal' => 'Modal', 'panel' => 'Panel'],
+                'default'     => 'modal',
+                'description' => __('Detail overlay style for the product page widget.', 'alyapay'),
                 'desc_tip'    => true,
             ],
             'product_widget_logo_position' => [
                 'title'       => __('Product Widget Logo Position', 'alyapay'),
                 'type'        => 'select',
-                'options'     => ['' => __('— Same as global —', 'alyapay'), 'right' => 'Right', 'left' => 'Left'],
-                'default'     => '',
-                'description' => __('Override global logo position for product page widget.', 'alyapay'),
+                'options'     => ['right' => 'Right', 'left' => 'Left'],
+                'default'     => 'right',
+                'description' => __('Logo position for the product page widget.', 'alyapay'),
+                'desc_tip'    => true,
+            ],
+            'product_widget_position'      => [
+                'title'       => __('Widget Position', 'alyapay'),
+                'type'        => 'select',
+                'options'     => [
+                    'after_price'      => __('After Price', 'alyapay'),
+                    'before_add_to_cart' => __('Above Add to Cart Button', 'alyapay'),
+                ],
+                'default'     => 'after_price',
+                'description' => __('Where to display the widget on the product page.', 'alyapay'),
                 'desc_tip'    => true,
             ],
             'product_widget_full_width'    => [
@@ -332,6 +343,17 @@ class AlyaPay_Gateway extends WC_Payment_Gateway {
                 'desc_tip'          => true,
                 'custom_attributes' => ['min' => 0],
             ],
+            'product_widget_shortcode_info' => [
+                'type' => 'alya_info',
+                'html' => '<div style="background:#f0f6fc;border-left:4px solid #2271b1;border-radius:0 4px 4px 0;padding:14px 16px;">'
+                        . '<p style="margin:0 0 6px;font-size:13px;color:#50575e;">'
+                        . esc_html__('You can use a shortcode to place this widget anywhere — in page builders, custom templates, or any content area.', 'alyapay')
+                        . ' ' . esc_html__('If you prefer automatic placement, enable it above and use the settings to configure appearance.', 'alyapay')
+                        . '</p>'
+                        . '<p style="margin:0;"><strong style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:#2271b1;">' . esc_html__('Shortcode', 'alyapay') . '</strong></p>'
+                        . '<code style="display:inline-block;margin-top:4px;background:#fff;border:1px solid #c3d4e8;border-radius:3px;padding:4px 10px;font-size:13px;">[alyapay_promo context=&quot;product&quot;]</code>'
+                        . '</div>',
+            ],
 
             // ---- Cart Widget ----
             'section_cart_widget' => [
@@ -348,33 +370,44 @@ class AlyaPay_Gateway extends WC_Payment_Gateway {
             'cart_widget_theme'            => [
                 'title'       => __('Cart Widget Theme', 'alyapay'),
                 'type'        => 'select',
-                'options'     => ['' => __('— Same as global —', 'alyapay'), 'light' => 'Light', 'light-plain' => 'Light Plain', 'dark' => 'Dark', 'dark-plain' => 'Dark Plain', 'neutral' => 'Neutral', 'neutral-plain' => 'Neutral Plain'],
-                'default'     => '',
-                'description' => __('Override global theme for cart widget.', 'alyapay'),
+                'options'     => ['light' => 'Light', 'light-plain' => 'Light Plain', 'dark' => 'Dark', 'dark-plain' => 'Dark Plain', 'neutral' => 'Neutral', 'neutral-plain' => 'Neutral Plain'],
+                'default'     => 'light',
+                'description' => __('Theme for the cart widget.', 'alyapay'),
                 'desc_tip'    => true,
             ],
             'cart_widget_variant'          => [
                 'title'       => __('Cart Widget Variant', 'alyapay'),
                 'type'        => 'select',
-                'options'     => ['' => __('— Same as global —', 'alyapay'), 'default' => 'Default', 'interactive' => 'Interactive'],
-                'default'     => '',
-                'description' => __('Override global variant for cart widget.', 'alyapay'),
+                'options'     => ['default' => 'Default', 'interactive' => 'Interactive'],
+                'default'     => 'default',
+                'description' => __('Variant for the cart widget.', 'alyapay'),
                 'desc_tip'    => true,
             ],
             'cart_widget_detail'           => [
                 'title'       => __('Cart Widget Detail', 'alyapay'),
                 'type'        => 'select',
-                'options'     => ['' => __('— Same as global —', 'alyapay'), 'modal' => 'Modal', 'panel' => 'Panel'],
-                'default'     => '',
-                'description' => __('Override global detail for cart widget.', 'alyapay'),
+                'options'     => ['modal' => 'Modal', 'panel' => 'Panel'],
+                'default'     => 'modal',
+                'description' => __('Detail overlay style for the cart widget.', 'alyapay'),
                 'desc_tip'    => true,
             ],
             'cart_widget_logo_position'    => [
                 'title'       => __('Cart Widget Logo Position', 'alyapay'),
                 'type'        => 'select',
-                'options'     => ['' => __('— Same as global —', 'alyapay'), 'right' => 'Right', 'left' => 'Left'],
-                'default'     => '',
-                'description' => __('Override global logo position for cart widget.', 'alyapay'),
+                'options'     => ['right' => 'Right', 'left' => 'Left'],
+                'default'     => 'right',
+                'description' => __('Logo position for the cart widget.', 'alyapay'),
+                'desc_tip'    => true,
+            ],
+            'cart_widget_position'         => [
+                'title'       => __('Widget Position', 'alyapay'),
+                'type'        => 'select',
+                'options'     => [
+                    'after_total'          => __('After Order Total', 'alyapay'),
+                    'before_checkout_button' => __('Above Proceed to Checkout Button', 'alyapay'),
+                ],
+                'default'     => 'after_total',
+                'description' => __('Where to display the widget on the cart page.', 'alyapay'),
                 'desc_tip'    => true,
             ],
             'cart_widget_full_width'    => [
@@ -418,6 +451,17 @@ class AlyaPay_Gateway extends WC_Payment_Gateway {
                 'description'       => __('Top and bottom inner padding in pixels.', 'alyapay'),
                 'desc_tip'          => true,
                 'custom_attributes' => ['min' => 0],
+            ],
+            'cart_widget_shortcode_info' => [
+                'type' => 'alya_info',
+                'html' => '<div style="background:#f0f6fc;border-left:4px solid #2271b1;border-radius:0 4px 4px 0;padding:14px 16px;">'
+                        . '<p style="margin:0 0 6px;font-size:13px;color:#50575e;">'
+                        . esc_html__('You can use a shortcode to place this widget anywhere — in page builders, custom templates, or any content area.', 'alyapay')
+                        . ' ' . esc_html__('If you prefer automatic placement, enable it above and use the settings to configure appearance.', 'alyapay')
+                        . '</p>'
+                        . '<p style="margin:0;"><strong style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:#2271b1;">' . esc_html__('Shortcode', 'alyapay') . '</strong></p>'
+                        . '<code style="display:inline-block;margin-top:4px;background:#fff;border:1px solid #c3d4e8;border-radius:3px;padding:4px 10px;font-size:13px;">[alyapay_promo context=&quot;cart&quot;]</code>'
+                        . '</div>',
             ],
         ];
     }
@@ -479,6 +523,10 @@ class AlyaPay_Gateway extends WC_Payment_Gateway {
             esc_attr($logo_position),
             $extra
         );
+    }
+
+    public function generate_alya_info_html(string $key, array $data): string {
+        return '<tr><td colspan="2" style="padding:12px 0 8px;border:none;">' . ($data['html'] ?? '') . '</td></tr>';
     }
 
     public function process_payment($order_id): array {
