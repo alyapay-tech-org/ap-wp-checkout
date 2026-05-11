@@ -49,6 +49,10 @@ class AlyaPay_API {
         return $this->get("/api/v1/public/transactions/{$transaction_id}/schedules");
     }
 
+    public function get_partner_config(): array {
+        return $this->get('/api/v1/public/partner/config');
+    }
+
     public function update_partner_config(array $payload): array {
         return $this->put('/api/v1/public/partner/config', $payload);
     }

@@ -60,6 +60,52 @@ add_action('plugins_loaded', static function () {
 
     new AlyaPay_Widget();
 
+    add_filter('widget_text', 'do_shortcode');
+    add_filter('widget_text_content', 'do_shortcode');
+    add_filter('widget_block_content', 'do_shortcode');
+    add_filter('widget_custom_html_content', 'do_shortcode');
+
+    // Sync min/max/expiry from AlyaPay backend before WooCommerce initializes gateways.
+    // Must run in plugins_loaded (not admin_init) so the gateway reads fresh values on first load.
+    // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+    if (is_admin()
+        && (isset($_GET['page']) ? $_GET['page'] : '') === 'wc-settings'
+        && (isset($_GET['section']) ? $_GET['section'] : '') === 'alyapay') {
+
+        $settings = get_option('woocommerce_alyapay_settings', []);
+        $api_key  = $settings['api_key'] ?? '';
+
+        if (!empty($api_key)) {
+            $base_url = ($settings['environment'] ?? '') === 'production'
+                ? 'https://api.alyapay.com'
+                : 'https://sandbox-api.alyapay.com';
+
+            try {
+                $config = (new AlyaPay_API($api_key, $base_url))->get_partner_config();
+
+                if (!empty($config)) {
+                    if (isset($config['minAmount'])) {
+                        $settings['amount_min'] = (string) $config['minAmount'];
+                    }
+                    if (isset($config['maxAmount'])) {
+                        $settings['amount_max'] = (string) $config['maxAmount'];
+                    }
+                    if (array_key_exists('transactionExpiry', $config)) {
+                        $settings['transaction_expiry'] = $config['transactionExpiry'] !== null
+                            ? (string) $config['transactionExpiry']
+                            : '';
+                    }
+                    update_option('woocommerce_alyapay_settings', $settings);
+                }
+            } catch (\Exception $e) {
+                wc_get_logger()->warning(
+                    'AlyaPay: failed to sync remote config: ' . $e->getMessage(),
+                    ['source' => 'alyapay']
+                );
+            }
+        }
+    }
+
     // Accordion JS for widget settings sections in admin
     add_action('admin_footer', static function () {
         // phpcs:ignore WordPress.Security.NonceVerification.Recommended

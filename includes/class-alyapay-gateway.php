@@ -148,17 +148,17 @@ class AlyaPay_Gateway extends WC_Payment_Gateway {
                 'title'             => __('Minimum Amount', 'alyapay'),
                 'type'              => 'number',
                 'default'           => '500',
-                'custom_attributes' => ['readonly' => 'readonly'],
-                'description'       => __('Set by AlyaPay. Contact support to change.', 'alyapay'),
+                'description'       => __('Set by AlyaPay. Synced automatically from your account.', 'alyapay'),
                 'desc_tip'          => true,
+                'custom_attributes' => ['readonly' => 'readonly'],
             ],
             'amount_max' => [
                 'title'             => __('Maximum Amount', 'alyapay'),
                 'type'              => 'number',
                 'default'           => '15000',
-                'custom_attributes' => ['readonly' => 'readonly'],
-                'description'       => __('Set by AlyaPay. Contact support to change.', 'alyapay'),
+                'description'       => __('Set by AlyaPay. Synced automatically from your account.', 'alyapay'),
                 'desc_tip'          => true,
+                'custom_attributes' => ['readonly' => 'readonly'],
             ],
 
             // ---- Widgets ----
@@ -172,6 +172,20 @@ class AlyaPay_Gateway extends WC_Payment_Gateway {
                 'type'    => 'checkbox',
                 'label'   => __('Enable AlyaPay checkout widget', 'alyapay'),
                 'default' => 'yes',
+            ],
+            'show_disabled_below_min' => [
+                'title'   => __('Show as Disabled Below Minimum', 'alyapay'),
+                'type'    => 'checkbox',
+                'label'   => __('Display AlyaPay as a disabled, unselectable option when cart total is below the minimum amount', 'alyapay'),
+                'default' => 'no',
+            ],
+            'disabled_title' => [
+                'title'       => __('Disabled State Title', 'alyapay'),
+                'type'        => 'text',
+                'default'     => '',
+                'placeholder' => __('Defaults to payment title', 'alyapay'),
+                'description' => __('Title shown when the option is disabled. Falls back to the main title if empty.', 'alyapay'),
+                'desc_tip'    => true,
             ],
             'widget_theme'         => [
                 'title'   => __('Widget Theme', 'alyapay'),
@@ -367,6 +381,23 @@ class AlyaPay_Gateway extends WC_Payment_Gateway {
                 'label'   => __('Show BNPL simulator on cart page', 'alyapay'),
                 'default' => 'yes',
             ],
+            'cart_widget_show_below_min' => [
+                'title'   => __('Show Below Minimum Indicator', 'alyapay'),
+                'type'    => 'checkbox',
+                'label'   => __('Show remaining amount needed to unlock AlyaPay when cart total is below minimum', 'alyapay'),
+                'default' => 'no',
+            ],
+            'cart_widget_min_display' => [
+                'title'       => __('Below Minimum Display', 'alyapay'),
+                'type'        => 'select',
+                'options'     => [
+                    'rich'    => __('Rich (banner + progress bar)', 'alyapay'),
+                    'minimal' => __('Minimal (banner only)', 'alyapay'),
+                ],
+                'default'     => 'rich',
+                'description' => __('How to display the below-minimum nudge in the cart widget.', 'alyapay'),
+                'desc_tip'    => true,
+            ],
             'cart_widget_theme'            => [
                 'title'       => __('Cart Widget Theme', 'alyapay'),
                 'type'        => 'select',
@@ -474,24 +505,83 @@ class AlyaPay_Gateway extends WC_Payment_Gateway {
             $total = (float) WC()->cart->total;
             $min   = (float) ($this->get_option('amount_min') ?: 500);
             $max   = (float) ($this->get_option('amount_max') ?: 15000);
-            if ($total < $min || $total > $max) {
+            if ($total > $max) {
                 return false;
+            }
+            if ($total < $min) {
+                return $this->get_option('show_disabled_below_min') === 'yes';
             }
         }
         return true;
     }
 
+    public function get_title(): string {
+        if ($this->is_below_min() && $this->get_option('show_disabled_below_min') === 'yes') {
+            $disabled_title = trim((string) $this->get_option('disabled_title', ''));
+            return $disabled_title ?: parent::get_title();
+        }
+        return parent::get_title();
+    }
+
+    private function is_below_min(): bool {
+        if (!WC()->cart) {
+            return false;
+        }
+        return (float) WC()->cart->total < (float) ($this->get_option('amount_min') ?: 500);
+    }
+
     public function payment_fields(): void {
+        if ($this->is_below_min() && $this->get_option('show_disabled_below_min') === 'yes') {
+            ?>
+            <script>
+            (function() {
+                function disableAlyaOption() {
+                    var li = document.querySelector('li.payment_method_alyapay');
+                    if (!li) return;
+                    li.style.opacity = '0.5';
+                    li.style.pointerEvents = 'none';
+                    var radio = document.getElementById('payment_method_alyapay');
+                    if (radio) {
+                        radio.disabled = true;
+                        if (radio.checked) {
+                            radio.checked = false;
+                            var first = document.querySelector('ul.wc_payment_methods input[type="radio"]:not([disabled])');
+                            if (first) { first.checked = true; first.dispatchEvent(new Event('change', {bubbles: true})); }
+                        }
+                    }
+                    var box = li.querySelector('.payment_box');
+                    if (box) box.style.display = 'none';
+                }
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', disableAlyaOption);
+                } else {
+                    disableAlyaOption();
+                }
+            })();
+            </script>
+            <?php
+            return;
+        }
+
         if ($this->description) {
             echo wpautop(wptexturize(esc_html($this->description)));
         }
 
         $widget_enabled = $this->get_option('widget_enabled') === 'yes';
-        if (!$widget_enabled || !WC()->cart) {
+        if (!$widget_enabled) {
             return;
         }
 
-        $total         = number_format((float) WC()->cart->total, 2, '.', '');
+        if (is_wc_endpoint_url('order-pay')) {
+            $order_id = absint(get_query_var('order-pay'));
+            $order    = $order_id ? wc_get_order($order_id) : null;
+            if (!$order) return;
+            $total = number_format((float) $order->get_total(), 2, '.', '');
+        } elseif (WC()->cart) {
+            $total = number_format((float) WC()->cart->total, 2, '.', '');
+        } else {
+            return;
+        }
         $currency      = get_woocommerce_currency();
         $locale        = get_locale();
         $lang          = strpos($locale, 'fr') === 0 ? 'fr' : (strpos($locale, 'ar') === 0 ? 'ar' : 'en');
@@ -534,6 +624,12 @@ class AlyaPay_Gateway extends WC_Payment_Gateway {
 
         if (!$order) {
             wc_add_notice(__('Order not found.', 'alyapay'), 'error');
+            return ['result' => 'failure'];
+        }
+
+        $min = (float) ($this->get_option('amount_min') ?: 500);
+        if ((float) $order->get_total() < $min) {
+            wc_add_notice(__('Order total does not meet the minimum amount required for AlyaPay.', 'alyapay'), 'error');
             return ['result' => 'failure'];
         }
 
