@@ -116,6 +116,15 @@ class AlyaPay_Webhook {
             return true;
         }
 
+        // Customer switched payment method — webhook belongs to abandoned AlyaPay attempt, ignore it.
+        if ($order->get_payment_method() !== 'alyapay') {
+            wc_get_logger()->info(
+                'AlyaPay webhook: ignoring ' . $note . ' order #' . $order->get_id() . ' payment method changed to ' . $order->get_payment_method(),
+                ['source' => 'alyapay']
+            );
+            return true;
+        }
+
         $order->update_status($status, $note);
         return true;
     }
