@@ -37,8 +37,6 @@ class AlyaPay_Widget {
                 add_action('woocommerce_cart_totals_after_order_total', [$this, 'render_cart_promo']);
             }
             add_action('woocommerce_pay_order_before_submit', [$this, 'render_cart_promo']);
-            add_action('woocommerce_after_mini_cart', [$this, 'render_mini_cart_promo']);
-            add_filter('render_block_woocommerce/filled-mini-cart-contents-block', [$this, 'inject_mini_cart_block_promo'], 10, 1);
         }
 
         add_action('woocommerce_thankyou_alyapay', [$this, 'render_success_schedules']);
@@ -52,17 +50,6 @@ class AlyaPay_Widget {
             null,
             true
         );
-
-        wp_add_inline_script('alyapay-placement', '(function(){
-            function syncMiniCartPadding(){
-                var items=document.querySelector(".wc-block-mini-cart__items");
-                var promos=document.querySelectorAll(".wc-block-mini-cart__drawer .alyapay-credit-promo,.wc-block-mini-cart__contents .alyapay-credit-promo");
-                if(!items||!promos.length)return;
-                var cs=window.getComputedStyle(items);
-                promos.forEach(function(el){el.style.paddingLeft=cs.paddingLeft;el.style.paddingRight=cs.paddingRight;el.style.paddingBottom="12px";});
-            }
-            if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",syncMiniCartPadding);}else{syncMiniCartPadding();}
-        })();');
     }
 
     public function render_product_promo(): void {
@@ -106,84 +93,6 @@ class AlyaPay_Widget {
         ]);
     }
 
-
-    public function render_mini_cart_promo(): void {
-        if (!WC()->cart || WC()->cart->is_empty()) {
-            return;
-        }
-        $total = (float) WC()->cart->total;
-        if ($total <= 0) {
-            $total = (float) WC()->cart->get_subtotal();
-        }
-        if ($total <= 0) {
-            $total = array_sum(array_column(WC()->cart->get_cart(), 'line_total'));
-        }
-        $max = (float) ($this->get('amount_max') ?: 15000);
-        if ($total > $max) {
-            return;
-        }
-        echo $this->mini_cart_promo_html($total);
-    }
-
-    public function inject_mini_cart_block_promo(string $html): string {
-        if (!WC()->cart || WC()->cart->is_empty()) {
-            return $html;
-        }
-        $total = (float) WC()->cart->total;
-        if ($total <= 0) {
-            $total = (float) WC()->cart->get_subtotal();
-        }
-        if ($total <= 0) {
-            $total = array_sum(array_column(WC()->cart->get_cart(), 'line_total'));
-        }
-        $max = (float) ($this->get('amount_max') ?: 15000);
-        if ($total > $max) {
-            return $html;
-        }
-        $widget = $this->mini_cart_promo_html($total);
-
-        // Inject before the footer div (handles extra classes / attributes gracefully)
-        $replaced = preg_replace(
-            '/(<div[^>]+class="[^"]*wc-block-mini-cart__footer[^"]*")/s',
-            $widget . '$1',
-            $html,
-            1
-        );
-        if ($replaced !== null && $replaced !== $html) {
-            return $replaced;
-        }
-
-        // Fallback: inject before the last closing div
-        $pos = strrpos($html, '</div>');
-        if ($pos !== false) {
-            return substr($html, 0, $pos) . $widget . substr($html, $pos);
-        }
-
-        return $html . $widget;
-    }
-
-    private function mini_cart_promo_html(float $total): string {
-        $settings  = $this->widget_attrs('cart');
-        $extra = '';
-        if (!empty($settings['min_amount']))  $extra .= ' min-amount="' . esc_attr($settings['min_amount']) . '" min-display="' . esc_attr($settings['min_display']) . '"';
-        if (!empty($settings['full_width']) && $settings['full_width'] === 'yes') $extra .= ' full-width="true"';
-        if ($settings['margin_x'] !== '')  $extra .= ' margin-x="'  . esc_attr($settings['margin_x'])  . '"';
-        if ($settings['margin_y'] !== '')  $extra .= ' margin-y="'  . esc_attr($settings['margin_y'])  . '"';
-        if ($settings['padding_x'] !== '') $extra .= ' padding-x="' . esc_attr($settings['padding_x']) . '"';
-        if ($settings['padding_y'] !== '') $extra .= ' padding-y="' . esc_attr($settings['padding_y']) . '"';
-
-        return sprintf(
-            '<div class="alyapay-credit-promo"><alya-placement key="cart" price="%s" currency="%s" lang="%s" installments="4" theme="%s" variant="%s" detail="%s" logo-position="%s"%s></alya-placement></div>',
-            esc_attr((string) $total),
-            esc_attr($settings['currency']),
-            esc_attr($settings['lang']),
-            esc_attr($settings['theme']),
-            esc_attr($settings['variant']),
-            esc_attr($settings['detail']),
-            esc_attr($settings['logo_position']),
-            $extra
-        );
-    }
 
     public function shortcode_promo(array $atts): string {
         // Require AlyaPay gateway to be enabled
