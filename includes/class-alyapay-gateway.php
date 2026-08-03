@@ -808,6 +808,64 @@ class AlyaPay_Gateway extends WC_Payment_Gateway {
         return $result;
     }
 
+    /**
+     * Manual fallback trigger for AlyaPay_Reconcile_Pending_Orders. The
+     * automatic default is the wp-cron event that runs every 5 minutes (registered in
+     * alyapay-payment.php); this button is for on-demand/troubleshooting
+     * use — e.g. wp-cron is unreliable on this host, or a merchant wants to
+     * resolve a known outage immediately rather than wait for the next tick.
+     * See docs/platform-parity.md at the repo root.
+     */
+    public function admin_options(): void {
+        // phpcs:ignore WordPress.Security.NonceVerification.Missing
+        if (isset($_POST['alyapay_reconcile_now'])) {
+            check_admin_referer('alyapay_reconcile_now');
+            $this->handle_reconcile_now();
+        }
+
+        echo '<div class="panel" style="margin-bottom:20px;">'
+            . '<h3>' . esc_html__('Reconciliation', 'alyapay') . '</h3>'
+            . '<p>' . esc_html__('Stuck-pending AlyaPay orders are reconciled automatically every 5 minutes via wp-cron. Use this button to check now — useful for troubleshooting, or right after a known outage.', 'alyapay') . '</p>'
+            . '<form method="post">';
+        wp_nonce_field('alyapay_reconcile_now');
+        echo '<button type="submit" name="alyapay_reconcile_now" value="1" class="button button-secondary">'
+            . esc_html__('Reconcile pending AlyaPay orders now', 'alyapay')
+            . '</button>'
+            . '</form>'
+            . '</div>';
+
+        parent::admin_options();
+    }
+
+    private function handle_reconcile_now(): void {
+        try {
+            $job = new AlyaPay_Reconcile_Pending_Orders(
+                $this->order_helper,
+                $this->api,
+                $this->wc_status('approved_status'),
+                $this->wc_status('cancelled_status'),
+                $this->wc_status('expired_status'),
+                (int) $this->get_option('transaction_expiry', 30)
+            );
+
+            $summary = $job->execute();
+
+            WC_Admin_Settings::add_message(
+                sprintf(
+                    /* translators: 1: number of orders checked, 2: number of orders resolved */
+                    __('Reconciliation run complete: %1$d order(s) checked, %2$d resolved.', 'alyapay'),
+                    $summary['checked'],
+                    $summary['reconciled']
+                )
+            );
+        } catch (\Throwable $e) {
+            $this->log('Manual reconciliation failed: ' . $e->getMessage(), 'error');
+            WC_Admin_Settings::add_error(
+                __('Reconciliation could not run. Check the AlyaPay logs for details.', 'alyapay')
+            );
+        }
+    }
+
     // -------------------------------------------------------------------------
 
     private function sync_partner_config(): void {

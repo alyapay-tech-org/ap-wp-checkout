@@ -57,6 +57,17 @@ class AlyaPay_API {
         return $this->put('/api/v1/public/partner/config', $payload);
     }
 
+    /**
+     * Vendor-reference transaction lookup, used by reconciliation to resolve
+     * orders stuck pending (webhook blocked, or customer never returned from
+     * checkout). Mirrors PrestaShop's AlyaPayVendorTransactionService.
+     *
+     * @return array{status: string, id: string, vendorReference: string, ...}
+     */
+    public function get_vendor_transaction(string $vendor_reference): array {
+        return $this->get('/api/v1/public/partner/transactions/vendor/' . rawurlencode($vendor_reference));
+    }
+
     // -------------------------------------------------------------------------
 
     private function get(string $path): array {
